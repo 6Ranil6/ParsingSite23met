@@ -24,31 +24,16 @@ class Writable(ABC):
 
 class WorkerWithHtml(Readable):
     
-    def __init__(self, proxy_lib= None):
+    def __init__(self, proxy_list: list= None):
         super().__init__()
         self._user = UserAgent().random
         
-        if proxy_lib:
+        if proxy_list:
             self.__is_exists_proxy= True
-            self.__proxy = proxy_lib
-            self.__is_update_proxy= False
+            self.__proxies = proxy_list
         else:
             self.__is_exists_proxy= False
-    
-    @property
-    def is_update_proxy(self):
-        return self.__is_update_proxy
 
-    @is_update_proxy.setter
-    def is_update_proxy(self, value: bool):
-        self.__is_update_proxy= value
-
-    async def _update_proxies(self):
-        if self.__is_exists_proxy:
-            await self.__proxy.update()
-        else:
-            print("Вы не передали параметр Proxy_lib. У вас нет возможности обновить данные прокси!")
-    
     @property
     def user(self):
         return  self._user
@@ -59,11 +44,7 @@ class WorkerWithHtml(Readable):
                   semaphore: asyncio.Semaphore= None,
                   accept: str= '*/*'):
         
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        
-        async def read_data_in_site(proxy= None, header= None, ssl= ssl_context):
+        async def read_data_in_site(proxy= None, header= None):
             nonlocal data
 
             kwargs= {'url': url,
@@ -73,18 +54,19 @@ class WorkerWithHtml(Readable):
 
             try:
                 # Чтение данных из сайта
-                async with session.get(**kwargs, ssl= ssl) as response:
+                async with session.get(**kwargs) as response:
                     
                     data = await response.text()
-                    if BeautifulSoup(data, 'lxml').find('title').text == 'Слишком много запросов':
+                    if 'Слишком много запросов' in data:
                         print("Блокировка! Пробуем сменить User-agent и PROXY...")
                         return False
                     else: 
                         return True
-            except Exception as e:
-                print(f"Ошибка при работе с прокси {e}")
+                            
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                print(f"Ошибка при работе с прокси {proxy}: {e}")
                 return False
-
+            
         header = {'Accept' : accept, 
                   'User-Agent': self._user,
                   "Accept-Language": "ru,en;q=0.9",
@@ -99,10 +81,11 @@ class WorkerWithHtml(Readable):
         
         data = None
         success = None
-        if not self.__is_update_proxy:
-            await self._update_proxies()
-
-        for proxy in self.__proxy.get_sockets():
+        if not self.__is_exists_proxy:
+            print("Вы не передавали список с прокси серверами при объявлении класса")
+            return None
+        
+        for proxy in self.__proxies:
             local_header = header.copy()
             local_header['User-Agent'] = UserAgent().random
 
@@ -155,6 +138,12 @@ class WorkerWithHtml(Readable):
                 async with session.get(url= url, 
                                         headers= header) as response:
                     data = await response.text()
+            if 'Слишком много запросов' in data:
+                    print("Блокировка (без прокси)! Сайт требует капчу или ввел лимиты.")
+                    # Здесь мы не можем просто вернуть False, т.к. нет цикла перебора.
+                    # Лучше всего "упасть", чтобы показать, что без прокси дальше нельзя.
+                    raise Exception("Сайт заблокировал наш IP. Нужны прокси.")
+            
             return data
 
         data = await read_data_in_site()
@@ -176,19 +165,6 @@ class WorkerWithHtml(Readable):
                                                   semaphore= semaphore,
                                                   url= url,
                                                   accept= accept)
-          
-    async def _read_main_site(self, url: str, accept: str= "*/*"):
-
-        # Забираем данные с основного сайта и кладем их в файла 
-        data = None
-        semaphore = asyncio.Semaphore(1)
-        async with aiohttp.ClientSession() as session:
-            data = await self.get(session= session, 
-                                  url= url, 
-                                  semaphore= semaphore,
-                                  accept= accept)
-        
-        return data
     
 class WorkerWithFiles(Readable, Writable):
 
@@ -211,9 +187,9 @@ class WorkerWithFiles(Readable, Writable):
             await file.write(json_str)
 
 class Parser(ABC):
-    def __init__(self, base_url: str, proxy_lib= None):
+    def __init__(self, base_url: str, proxy_list: list= None):
         self.__file_worker = WorkerWithFiles()
-        self.__html_worker = WorkerWithHtml(proxy_lib)
+        self.__html_worker = WorkerWithHtml(proxy_list)
         self.base_url = base_url
 
 
@@ -237,20 +213,16 @@ class Parser(ABC):
                        url: str,
                        semaphore: asyncio.Semaphore= None,
                        accept: str= '*/*'):
-        return await self.__html_worker.get(session= session, url= url, semaphore= semaphore, accept= accept)
-    
-
-    async def _read_main_site_and_save(self, 
-                                       path_main_site: str, 
-                                       file_name_for_main_site: str,
-                                       accept: str= "*/*"):
-        
-        data = await self.__html_worker._read_main_site(self.base_url, 
-                                                        accept= accept)
-        
-        path= os.path.join(path_main_site, file_name_for_main_site)
-        await self.put_file(path= path, data= data)
-        
+        retries= 5 # количество попыток при неудачном запросе
+        for _ in range(retries):
+            try:
+                return await self.__html_worker.get(session= session, url= url, semaphore= semaphore, accept= accept)
+            except:
+                print("Не вернулся ответ от сервера, пробую еще раз!")
+                await asyncio.sleep(1)
+            
+        print("Не возвращается ответ от сервера, закрываю соединение!")
+        return None
 
     async def _save_data_in_json_file(self, path: str, data: Any):
         await self.__file_worker._put_json_file(path, data)

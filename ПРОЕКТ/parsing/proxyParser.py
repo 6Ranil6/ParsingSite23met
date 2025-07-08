@@ -8,7 +8,8 @@ import json
 
 class ParserProxyLib(Parser):
     def __init__(self, base_url= "https://proxylib.com/free-proxy-list"):
-        super().__init__(base_url)
+        super().__init__(base_url, proxy_list= None)
+        self.__dir_path= None
 
     async def _fetch_and_save_site(self, name_file, session, url, semaphore, accept= '*/*'):
         html = await self.get_html(session= session,
@@ -78,7 +79,8 @@ class ParserProxyLib(Parser):
         self._create_dir(dir_name)
 
         semaphore = asyncio.Semaphore(MAX_TASKS)
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total= 30)
+        async with aiohttp.ClientSession(timeout= timeout) as session:
             tasks= []
             page_num = 1
             for page_num in range(MAX_PAGES + 1):
@@ -132,17 +134,11 @@ class ParserProxyLib(Parser):
         
         await self._save_data_in_json_file(path= os.path.join(dir_name, 'update_setting.json'), data= update_json)
 
-    async def update(self):
-        try:
-            with open(file= os.path.join(self.__dir_path, 'update_setting.json')) as f:
-                data = json.load(fp= f)
-        except FileNotFoundError as exp:
-            print("Вероятнее всего, вы еще ниразу не применяли parsing()! Поэтому я сам вызову его, но с базовыми параметрами!")
-            self.parsing()
-        del data['base_url']
-        await self.parsing(**data)
     
     def get_sockets(self):
+        if not self.__dir_path or not os.path.exists(self.__dir_path):
+            print("Ошибка: директория с прокси не найдена. Возможно, метод parsing() не был вызван.")
+            return []
         try:
             protocol_type = None
             with open(file= os.path.join(self.__dir_path, 'update_setting.json')) as file:

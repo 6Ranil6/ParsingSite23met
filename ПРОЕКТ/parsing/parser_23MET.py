@@ -4,12 +4,18 @@ import asyncio
 import os
 from bs4 import BeautifulSoup
 import re
+from aiohttp import TCPConnector
 
 class ParserSite_23MET(Parser):
-    def __init__(self, base_url= "https://23met.ru/price", 
-                        proxy_lib= None):
-        super().__init__(base_url, proxy_lib)
+    def __init__(self, base_url= "https://23met.ru/price",
+                        proxy_list: list= None):
+        super().__init__(base_url, proxy_list)
 
+    @staticmethod
+    def sanitize_filename(filename: str) -> str:
+        # Заменяем все недопустимые символы на "_"
+        return re.sub(r'[\\/:"*?<>|]+', '_', filename)
+    
     async def __get_hrefs_for_next_sites(self,
                                          file_path: str):
         
@@ -33,32 +39,21 @@ class ParserSite_23MET(Parser):
 
         return hrefs_next_sites
 
-    
-   
-    
-    
-    @staticmethod
-    def sanitize_filename(filename: str) -> str:
-        # Заменяем все недопустимые символы на "_"
-        return re.sub(r'[\\/:"*?<>|]+', '_', filename)
-    
     async def _fetch_and_save_one(self, session, semaphore, url, path, detail_name, accept):
         """Скачивает и сразу сохраняет одну страницу."""
 
         async with semaphore:
             print(f"Начинаю обработку {detail_name}...")
+            # ВАЖНО: get_html теперь должен принимать сессию, так как мы ее создаем снаружи
             html = await self.get_html(session=session, url=url, accept=accept)
 
             if html:
-                safe_name = self.sanitize_filename(filename= detail_name)
+                safe_name = ParserSite_23MET.sanitize_filename(filename= detail_name)
                 file_path = os.path.join(path, f"{safe_name}.html")
                 await self.put_file(path=file_path, data=html)
                 print(f"Сохранил {detail_name} в {file_path}")
             else:
                 print(f"Не удалось скачать {detail_name} с URL: {url}")
-
-
-
 
     async def parsing(self,
                       file_name_for_main_site= 'main_site.html',
@@ -68,41 +63,48 @@ class ParserSite_23MET(Parser):
         
         path = os.getcwd()
 
-        # создаю директорию, если есть dir_name
         if dir_name:
             path = os.path.join(path, dir_name)
             if not os.path.isdir(path):
-                os.mkdir(path= path)
+                os.mkdir(path)
                 print(f"Создал папку {dir_name} по пути {path}")
             else:
                 print(f"Не стал создавать папку {dir_name}, т.к она уже существует!")
         
-        try:
-            await self._read_main_site_and_save(path_main_site= path, 
-                                                file_name_for_main_site= file_name_for_main_site,
-                                                accept= accept)
+        # --- ЦЕНТРАЛИЗОВАННОЕ СОЗДАНИЕ СЕССИИ ---
+        # Создаем коннектор и сессию ОДИН РАЗ для всех запросов этого парсера
+        connector = TCPConnector(ssl=False)
+        timeout = aiohttp.ClientTimeout(total= 20, connect=10)
+        async with aiohttp.ClientSession(connector=connector, timeout= timeout) as session:
+            try:
+                # --- Скачиваем главный сайт, используя созданную сессию ---
+                print("Скачиваю главную страницу...")
+                main_html = await self.get_html(session=session, url=self.base_url, accept=accept)
+                
+                if not main_html:
+                    raise Exception("Не удалось скачать главную страницу, завершаю работу.")
+                
+                main_file_path = os.path.join(path, file_name_for_main_site)
+                await self.put_file(path=main_file_path, data=main_html)
+                print(f"Сохранил главную страницу в {main_file_path}")
 
-        except Exception as ex:
-            print(ex)
-            return ex
+            except Exception as ex:
+                print(ex)
+                return ex
 
+            # Получаем json с ссылками на сайты
+            hrefs_next_sites = await self.__get_hrefs_for_next_sites(main_file_path) 
 
-        # Получаем json с ссылками на сайты
-        hrefs_next_sites = await self.__get_hrefs_for_next_sites(os.path.join(path, file_name_for_main_site)) 
-
-        semaphore = asyncio.Semaphore(MAX_TASKS)
-        
-        # создадим отдельную директиву для сайтов
-        SUBMAIN_DIR_NAME = 'submain_sites'
-        dir_path = os.path.join(path, SUBMAIN_DIR_NAME) 
-        counter= 0
-        while os.path.isdir(dir_path):
-            dir_path += str(counter)
-            counter += 1
-        os.mkdir(dir_path)
-        
-        # Парсим отдельные сайты
-        async with aiohttp.ClientSession() as session:
+            semaphore = asyncio.Semaphore(MAX_TASKS)
+            
+            SUBMAIN_DIR_NAME = 'submain_sites'
+            dir_path = os.path.join(path, SUBMAIN_DIR_NAME) 
+            counter= 0
+            while os.path.isdir(dir_path):
+                dir_path += str(counter)
+                counter += 1
+            os.mkdir(dir_path)
+            
             tasks = []
             for detail_name, submain_url in hrefs_next_sites.items():
                 task = asyncio.create_task(
