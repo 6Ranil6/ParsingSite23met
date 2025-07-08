@@ -8,6 +8,7 @@ import aiofiles
 import json
 from bs4 import BeautifulSoup
 import random
+import ssl
 
 class Readable(ABC):
     def __init__(self): pass
@@ -23,15 +24,104 @@ class Writable(ABC):
 
 class WorkerWithHtml(Readable):
     
-    def __init__(self):
+    def __init__(self, proxy_lib= None):
         super().__init__()
         self._user = UserAgent().random
         
+        if proxy_lib:
+            self.__is_exists_proxy= True
+            self.__proxy = proxy_lib
+            self.__is_update_proxy= False
+        else:
+            self.__is_exists_proxy= False
+    
+    @property
+    def is_update_proxy(self):
+        return self.__is_update_proxy
+
+    @is_update_proxy.setter
+    def is_update_proxy(self, value: bool):
+        self.__is_update_proxy= value
+
+    async def _update_proxies(self):
+        if self.__is_exists_proxy:
+            await self.__proxy.update()
+        else:
+            print("Вы не передали параметр Proxy_lib. У вас нет возможности обновить данные прокси!")
+    
     @property
     def user(self):
         return  self._user
+    
+    async def __get_with_proxy(self, 
+                  session: aiohttp.ClientSession, 
+                  url: str,
+                  semaphore: asyncio.Semaphore= None,
+                  accept: str= '*/*'):
+        
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        async def read_data_in_site(proxy= None, header= None, ssl= ssl_context):
+            nonlocal data
 
-    async def get(self, 
+            kwargs= {'url': url,
+                     'headers': header}
+            if proxy:
+                kwargs['proxy'] = proxy
+
+            try:
+                # Чтение данных из сайта
+                async with session.get(**kwargs, ssl= ssl) as response:
+                    
+                    data = await response.text()
+                    if BeautifulSoup(data, 'lxml').find('title').text == 'Слишком много запросов':
+                        print("Блокировка! Пробуем сменить User-agent и PROXY...")
+                        return False
+                    else: 
+                        return True
+            except Exception as e:
+                print(f"Ошибка при работе с прокси {e}")
+                return False
+
+        header = {'Accept' : accept, 
+                  'User-Agent': self._user,
+                  "Accept-Language": "ru,en;q=0.9",
+                  "Accept-Encoding": "gzip, deflate, br",
+                  "Connection": "keep-alive",
+                  "Upgrade-Insecure-Requests": "1",
+                  "Sec-Fetch-Dest": "document",
+                  "Sec-Fetch-Mode": "navigate",
+                  "Sec-Fetch-Site": "none",
+                  "Sec-Fetch-User": "?1",
+                  "Referer": "https://23met.ru/"}
+        
+        data = None
+        success = None
+        if not self.__is_update_proxy:
+            await self._update_proxies()
+
+        for proxy in self.__proxy.get_sockets():
+            local_header = header.copy()
+            local_header['User-Agent'] = UserAgent().random
+
+            if semaphore:
+                async with semaphore:
+                    success = await read_data_in_site(proxy, local_header)
+
+            else:
+                success = await read_data_in_site(proxy, local_header)
+
+            if success:    
+                await asyncio.sleep(random.uniform(2, 5))
+                return data
+        
+        else:
+            print("Не нашлось PROXY сервер, который работает исправно!")
+            return None
+        
+    async def __get_without_proxy(self, 
                   session: aiohttp.ClientSession, 
                   url: str,
                   semaphore: asyncio.Semaphore= None,
@@ -68,15 +158,25 @@ class WorkerWithHtml(Readable):
             return data
 
         data = await read_data_in_site()
-        while BeautifulSoup(data, 'lxml').find('title').text == 'Слишком много запросов':
-            print("Блокировка! Жду 2 минуты и пробую снова...")
-            header['User-Agent'] = UserAgent().random
-            await asyncio.sleep(120)
-            data = await read_data_in_site()
-
-        await asyncio.sleep(random.uniform(1, 3))
+        await asyncio.sleep(random.uniform(2, 5))
         return data
-
+        
+    async def get(self, 
+                  session: aiohttp.ClientSession, 
+                  url: str,
+                  semaphore: asyncio.Semaphore= None,
+                  accept: str= '*/*'):
+        if self.__is_exists_proxy:
+            return await self.__get_with_proxy(session= session,
+                                               url= url,
+                                               semaphore= semaphore,
+                                               accept= accept)
+        else:
+            return await self.__get_without_proxy(session= session,
+                                                  semaphore= semaphore,
+                                                  url= url,
+                                                  accept= accept)
+          
     async def _read_main_site(self, url: str, accept: str= "*/*"):
 
         # Забираем данные с основного сайта и кладем их в файла 
@@ -89,7 +189,7 @@ class WorkerWithHtml(Readable):
                                   accept= accept)
         
         return data
-
+    
 class WorkerWithFiles(Readable, Writable):
 
     def __init__(self):
@@ -111,9 +211,9 @@ class WorkerWithFiles(Readable, Writable):
             await file.write(json_str)
 
 class Parser(ABC):
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, proxy_lib= None):
         self.__file_worker = WorkerWithFiles()
-        self.__html_worker = WorkerWithHtml()
+        self.__html_worker = WorkerWithHtml(proxy_lib)
         self.base_url = base_url
 
 
@@ -148,13 +248,10 @@ class Parser(ABC):
         data = await self.__html_worker._read_main_site(self.base_url, 
                                                         accept= accept)
         
-        # # сохраняет данные в файл
-        # if BeautifulSoup(data, 'lxml').find(name= 'title').text == "Слишком много запросов":
-        #     raise Exception("Вас заблокировали!")
-        
         path= os.path.join(path_main_site, file_name_for_main_site)
         await self.put_file(path= path, data= data)
         
 
     async def _save_data_in_json_file(self, path: str, data: Any):
         await self.__file_worker._put_json_file(path, data)
+        

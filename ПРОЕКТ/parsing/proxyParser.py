@@ -109,7 +109,7 @@ class ParserProxyLib(Parser):
             for pair in await asyncio.gather(*tasks2):
                 for t, s in pair:
                     if t == CONECTION_PROTOCOL_TYPE.upper():
-                        json[t].append(s)
+                        json[t].append(f"{CONECTION_PROTOCOL_TYPE.lower()}://" + s)
             
             if json:
                 # сохраняем JSON в файл: "proxy.json"
@@ -139,7 +139,7 @@ class ParserProxyLib(Parser):
         except FileNotFoundError as exp:
             print("Вероятнее всего, вы еще ниразу не применяли parsing()! Поэтому я сам вызову его, но с базовыми параметрами!")
             self.parsing()
-
+        del data['base_url']
         await self.parsing(**data)
     
     def get_sockets(self):

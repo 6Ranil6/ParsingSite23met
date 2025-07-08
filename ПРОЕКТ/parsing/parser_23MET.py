@@ -2,17 +2,17 @@ from base import Parser
 import aiohttp
 import asyncio
 import os
-from typing import Dict, Any
 from bs4 import BeautifulSoup
 import re
 
 class ParserSite_23MET(Parser):
-    def __init__(self, base_url):
-        super().__init__(base_url)
+    def __init__(self, base_url= "https://23met.ru/price", 
+                        proxy_lib= None):
+        super().__init__(base_url, proxy_lib)
 
     async def __get_hrefs_for_next_sites(self,
                                          file_path: str):
-
+        
         #сначало парсим основной сайт
         html_file = await self.get_file(path= file_path)
         soup = BeautifulSoup(markup= html_file, 
@@ -34,10 +34,7 @@ class ParserSite_23MET(Parser):
         return hrefs_next_sites
 
     
-
-    # async def __sub_get_hrefs_for_next_sites(self, 
-    #                                          file_path: str):
-    #     html_file = await self.get_file(path= file_path)
+   
     
     
     @staticmethod
@@ -67,7 +64,7 @@ class ParserSite_23MET(Parser):
                       file_name_for_main_site= 'main_site.html',
                       accept= '*/*',
                       dir_name= None,
-                      MAX_TASKS= 5): 
+                      MAX_TASKS= 25):
         
         path = os.getcwd()
 
@@ -103,7 +100,8 @@ class ParserSite_23MET(Parser):
             dir_path += str(counter)
             counter += 1
         os.mkdir(dir_path)
-
+        
+        # Парсим отдельные сайты
         async with aiohttp.ClientSession() as session:
             tasks = []
             for detail_name, submain_url in hrefs_next_sites.items():
