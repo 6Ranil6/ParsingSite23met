@@ -6,12 +6,13 @@ import os
 from bs4 import BeautifulSoup
 import re
 import json
+from time import time
 
 class ParserSite_23MET(Parser):
     def __init__(self, base_url= "https://23met.ru/sitemap.xml",
-                        proxy_list: list= None,
-                        max_rate= 2,
-                        time_period= 10):
+                       proxy_list: list= None,
+                       max_rate= 1,
+                       time_period= 10):
         
 
         super().__init__(base_url, proxy_list)
@@ -27,10 +28,8 @@ class ParserSite_23MET(Parser):
 
     async def _get_html_sitemap_of_main_site(self, session):
         # Находим SITEMAP XML главного сайта и сохраняем данные в файл
-        semaphore = asyncio.Semaphore(self.__MAX_TASKS)
         response = await self.get_html(url= self.base_url,
                                        session= session,
-                                       semaphore= semaphore,
                                        accept= self.__accept)
         await self.put_file(path= os.path.join(self.__path, self.__file_name_for_main_site),
                             data= response)
@@ -45,14 +44,18 @@ class ParserSite_23MET(Parser):
         return [el.get_text() for el in soup.find_all(name= 'loc')]
 
 
-    async def get_html(self, session, url, semaphore = None, accept = '*/*'):
+    async def get_html(self, session, url, accept = '*/*'):
         """Переопределил метод get_html, таким образом, чтобы limiter срабатывал"""
         async with self.__limiter:
-            return await super().get_html(session, url, semaphore, accept)
+            return await super().get_html(session= session, 
+                                          url= url,
+                                          accept= accept)
         
 
-    async def download_AND_save(self, session, url, file_path, semaphore = None, accept = '*/*'):
-        response = await self.get_html(session, url, semaphore, accept)
+    async def download_AND_save(self, session, url, file_path, accept = '*/*'):
+        response = await self.get_html(session= session, 
+                                       url= url,
+                                       accept= accept)
         await self.put_file(file_path, response)
         self.__counter+= 1
         print(f"Скачал и сохранил: {self.__counter} из {self.__num_all_tasks} ..... ({self.__counter/self.__num_all_tasks:.2%})")
@@ -65,7 +68,19 @@ class ParserSite_23MET(Parser):
         self.__counter += 1
         print(f"Спарсил: {self.__counter} из {self.__num_all_tasks} ..... ({self.__counter/self.__num_all_tasks:.2%})")
         return hrefs
-     
+
+    async def _save_site_with_data_in_file(self, dir_path, session, url, accept= '*/*'):
+        data = await self.get_html(session= session,
+                                   url= url,
+                                   accept= accept)
+        file_name_el = url.split('/')
+        await self.put_file(os.path.join(dir_path, "_".join([file_name_el[-2], file_name_el[-1]])), data)
+        self.__counter += 1
+        print(f"Скачал и сохранил: {self.__counter} из {self.__num_all_tasks} ..... ({self.__counter/self.__num_all_tasks:.2%})")
+  
+    # async def _parsing_site_with_data_from_file(self, dir_path):
+    #     data = await self.get_file(dir_path)
+    #     soup = BeautifulSoup()
 
     def __sanitize_hrefs_file(self):
         STOPWORD = "https://23met.ru/services"
@@ -95,15 +110,13 @@ class ParserSite_23MET(Parser):
             json.dump(final_urls, file, indent= 4, ensure_ascii= False)
 
 
-    async def parsing(self,
-                      file_name_for_main_site= 'main_site.html',
-                      accept= '*/*',
-                      dir_name= None,
-                      MAX_TASKS= 25):
+    async def save_data(self,
+                        file_name_for_main_site= 'main_site.html',
+                        accept= '*/*',
+                        dir_name= None):
         
         self.__file_name_for_main_site = file_name_for_main_site
         self.__accept = accept
-        self.__MAX_TASKS = MAX_TASKS
 
         path = os.getcwd()
 
@@ -146,12 +159,33 @@ class ParserSite_23MET(Parser):
             hrefs = [item for result_list in await asyncio.gather(*tasks) for item in result_list] 
             await self._save_data_in_json_file(self.__hrefs_path, hrefs)
             self.__sanitize_hrefs_file()
-            print("Все должно сохраниться в", self.__hrefs_path)
+            
+            with open(self.__hrefs_path2) as file:
+                urls = json.load(file)
+            
+            
 
+            self.__dir_sites = os.path.join(self.__path, "Data")
+            os.makedirs(self.__dir_sites, exist_ok=True)
 
-async def main():
-    a = ParserSite_23MET(max_rate=10, time_period= 1)
-    await a.parsing(dir_name= 'Test')
+            self.__num_all_tasks = 36659
+            self.__counter = 0
+            tasks = []
+            for url in urls:
+                task = asyncio.create_task(self._save_site_with_data_in_file(dir_path= self.__dir_sites,
+                                                                             session= session,
+                                                                             url= url)) 
+                tasks.append(task)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+            start = time()
+            await asyncio.gather(*tasks)
+            print(f"Time =", time() - start)
+
+    async def parsing(self,
+                      file_name_for_main_site= 'main_site.html',
+                      accept= '*/*',
+                      dir_name= None):
+        
+        await self.save_data(file_name_for_main_site= file_name_for_main_site,
+                             accept= accept,
+                             dir_name= dir_name)

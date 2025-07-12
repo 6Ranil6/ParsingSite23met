@@ -5,11 +5,14 @@ import os
 from bs4 import BeautifulSoup
 import re
 import json
+import aiolimiter
 
 class ParserProxyLib(Parser):
-    def __init__(self, base_url= "https://proxylib.com/free-proxy-list"):
+    def __init__(self, base_url= "https://proxylib.com/free-proxy-list", max_rate = 1, time_period= 10):
         super().__init__(base_url, proxy_list= None)
         self.__dir_path= None
+        self.__limiter = aiolimiter.AsyncLimiter(max_rate= max_rate,
+                                                 time_period= time_period)
 
     async def _fetch_and_save_site(self, name_file, session, url, semaphore, accept= '*/*'):
         html = await self.get_html(session= session,
@@ -74,7 +77,8 @@ class ParserProxyLib(Parser):
                       CONECTION_PROTOCOL_TYPE= 'https',
                       MAX_PAGES= 77,
                       MAX_TASKS= 25,
-                      delete_all_page_files= True):
+                      delete_all_page_files= True,
+                      url_for_checking= None):
         
         self._create_dir(dir_name)
 
@@ -113,10 +117,24 @@ class ParserProxyLib(Parser):
                     if t == CONECTION_PROTOCOL_TYPE.upper():
                         json[t].append(f"{CONECTION_PROTOCOL_TYPE.lower()}://" + s)
             
+            self.__proxies = json[CONECTION_PROTOCOL_TYPE.upper()]
             if json:
-                # сохраняем JSON в файл: "proxy.json"
-                await self._save_data_in_json_file(path= os.path.join(self.__dir_path, 'proxy.json'), 
-                                               data= json)
+
+                if url_for_checking:
+                    tasks = []
+                    for proxy in self.__proxies:
+                        task = asyncio.create_task(self.checking(url= url_for_checking,
+                                                                 proxy= proxy))
+                        tasks.append(task)
+                    results = await asyncio.gather(*tasks)
+                    working_proxies = [proxy for proxy, is_working in zip(self.__proxies, results) if is_working]
+                    json[CONECTION_PROTOCOL_TYPE.upper()] = working_proxies 
+                    await self._save_data_in_json_file(path= os.path.join(self.__dir_path, 'proxy.json'), 
+                                                    data= json)
+                else:
+                    # сохраняем JSON в файл: "proxy.json"
+                    await self._save_data_in_json_file(path= os.path.join(self.__dir_path, 'proxy.json'), 
+                                                    data= json)
                 print("Все завершилось успешно!")
             else:
                 print(f"Не нашлось PROXY с {CONECTION_PROTOCOL_TYPE}")
@@ -149,3 +167,28 @@ class ParserProxyLib(Parser):
                 protocol_type = json.load(file)["CONECTION_PROTOCOL_TYPE"]
         with open(file= os.path.join(self.__dir_path, 'proxy.json')) as f:
             return json.load(f)[protocol_type]
+    
+    async def checking(self, proxy, url):
+        try:
+            async with self.__limiter:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url= url, proxy= proxy, ssl= False) as response:
+                        if response.status == 200:
+                            print(f"{proxy} работает!!!")
+                            return True
+                        else:
+                            print(f"{proxy} НЕ работает!!!")
+                            return False
+        
+        except aiohttp.ClientProxyConnectionError as e:
+            print(f"Ошибка подключения к прокси: {e}. Проверьте адрес, порт, логин или пароль.")
+            return False
+        except aiohttp.ClientHttpProxyError as e:
+            print(f"Ошибка HTTP от прокси (например, 407 Proxy Authentication Required): {e}")
+            return False
+        except asyncio.TimeoutError:
+            print("Ошибка! Прокси не ответил за 10 секунд (Таймаут).")
+            return False
+        except Exception as e:
+            print(f"Неизвестная ошибка: {e}")
+            return False
