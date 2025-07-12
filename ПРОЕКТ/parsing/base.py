@@ -6,9 +6,7 @@ from fake_useragent import UserAgent
 from typing import Any
 import aiofiles
 import json
-from bs4 import BeautifulSoup
 import random
-import ssl
 
 class Readable(ABC):
     def __init__(self): pass
@@ -185,7 +183,12 @@ class WorkerWithFiles(Readable, Writable):
         async with aiofiles.open(path, 'w') as file:
             json_str = json.dumps(obj= data, indent= 4, ensure_ascii= False) 
             await file.write(json_str)
-
+    
+    @staticmethod
+    def get_no_async(file_path: str): 
+        with open(file_path) as file:    
+            return file.read()
+        
 class Parser(ABC):
     def __init__(self, base_url: str, proxy_list: list= None):
         self.__file_worker = WorkerWithFiles()
@@ -207,6 +210,9 @@ class Parser(ABC):
     async def get_file(self, path: str):
         return await self.__file_worker.get(path= path)
 
+    @staticmethod
+    def get_data_in_file_no_async(file_path: str): 
+        return WorkerWithFiles.get_no_async(file_path= file_path)
     
     async def get_html(self, 
                        session: aiohttp.ClientSession,

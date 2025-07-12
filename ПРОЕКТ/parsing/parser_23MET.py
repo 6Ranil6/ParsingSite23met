@@ -1,59 +1,99 @@
 from base import Parser
 import aiohttp
 import asyncio
+import aiolimiter
 import os
 from bs4 import BeautifulSoup
 import re
-from aiohttp import TCPConnector
+import json
 
 class ParserSite_23MET(Parser):
-    def __init__(self, base_url= "https://23met.ru/price",
-                        proxy_list: list= None):
+    def __init__(self, base_url= "https://23met.ru/sitemap.xml",
+                        proxy_list: list= None,
+                        max_rate= 2,
+                        time_period= 10):
+        
+
         super().__init__(base_url, proxy_list)
+        # В sitemap-е указано crawl delay = 10 -> 1 запрос в 10 секунд должен происходить...
+        self.__limiter = aiolimiter.AsyncLimiter(max_rate= max_rate,
+                                                 time_period= time_period)
 
     @staticmethod
     def sanitize_filename(filename: str) -> str:
         # Заменяем все недопустимые символы на "_"
         return re.sub(r'[\\/:"*?<>|]+', '_', filename)
-    
-    async def __get_hrefs_for_next_sites(self,
-                                         file_path: str):
-        
-        #сначало парсим основной сайт
-        html_file = await self.get_file(path= file_path)
-        soup = BeautifulSoup(markup= html_file, 
+
+
+    async def _get_html_sitemap_of_main_site(self, session):
+        # Находим SITEMAP XML главного сайта и сохраняем данные в файл
+        semaphore = asyncio.Semaphore(self.__MAX_TASKS)
+        response = await self.get_html(url= self.base_url,
+                                       session= session,
+                                       semaphore= semaphore,
+                                       accept= self.__accept)
+        await self.put_file(path= os.path.join(self.__path, self.__file_name_for_main_site),
+                            data= response)
+            
+
+    def _parsing_main_site(self):
+        "Парсим с главного сайта все sitemap-ы"
+        response = self.get_data_in_file_no_async(file_path= os.path.join(self.__path, self.__file_name_for_main_site))
+        soup = BeautifulSoup(markup= response,
                              features= 'lxml')
         
-        items_html_with_href= soup.find(name= 'nav', 
-                                        attrs={"id" : "left-container", "class" : "left-container-mainpage-static"})\
-                                  .find(name= 'ul')\
-                                  .find_all(name= 'a')
+        return [el.get_text() for el in soup.find_all(name= 'loc')]
+
+
+    async def get_html(self, session, url, semaphore = None, accept = '*/*'):
+        """Переопределил метод get_html, таким образом, чтобы limiter срабатывал"""
+        async with self.__limiter:
+            return await super().get_html(session, url, semaphore, accept)
         
-        # формируем json с ссылками на сайты, внутри которых будут еще одни сайты с сылками на данные
-        hrefs_next_sites = dict()
-        for item in items_html_with_href:
-            item: BeautifulSoup
-            item_name = item.get_text()
-            item_href = self.base_url + item.get('href').replace('/price', '')
-            hrefs_next_sites[item_name] = item_href
 
-        return hrefs_next_sites
+    async def download_AND_save(self, session, url, file_path, semaphore = None, accept = '*/*'):
+        response = await self.get_html(session, url, semaphore, accept)
+        await self.put_file(file_path, response)
+        self.__counter+= 1
+        print(f"Скачал и сохранил: {self.__counter} из {self.__num_all_tasks} ..... ({self.__counter/self.__num_all_tasks:.2%})")
 
-    async def _fetch_and_save_one(self, session, semaphore, url, path, detail_name, accept):
-        """Скачивает и сразу сохраняет одну страницу."""
 
-        async with semaphore:
-            print(f"Начинаю обработку {detail_name}...")
-            # ВАЖНО: get_html теперь должен принимать сессию, так как мы ее создаем снаружи
-            html = await self.get_html(session=session, url=url, accept=accept)
+    async def _parsing_sitemap_files(self, file_path):
+        data = await self.get_file(file_path)
+        soup = BeautifulSoup(data, 'lxml')
+        hrefs = [href.get_text() for href in soup.find_all(name= 'loc')]
+        self.__counter += 1
+        print(f"Спарсил: {self.__counter} из {self.__num_all_tasks} ..... ({self.__counter/self.__num_all_tasks:.2%})")
+        return hrefs
+     
 
-            if html:
-                safe_name = ParserSite_23MET.sanitize_filename(filename= detail_name)
-                file_path = os.path.join(path, f"{safe_name}.html")
-                await self.put_file(path=file_path, data=html)
-                print(f"Сохранил {detail_name} в {file_path}")
-            else:
-                print(f"Не удалось скачать {detail_name} с URL: {url}")
+    def __sanitize_hrefs_file(self):
+        STOPWORD = "https://23met.ru/services"
+        with open(self.__hrefs_path) as file:
+            raw_urls = json.load(file)
+
+        raw_urls = raw_urls[:raw_urls.index(STOPWORD)]
+
+        unique_base_urls = {url.split('?')[0].rstrip('/') for url in raw_urls}
+
+        sorted_urls = sorted(list(unique_base_urls))
+
+        category_urls = set()
+        for i in range(len(sorted_urls) - 1):
+            current_url = sorted_urls[i]
+            next_url = sorted_urls[i+1]
+            if next_url.startswith(current_url + '/'):
+                category_urls.add(current_url)
+
+        final_urls = [
+            url for url in sorted_urls 
+            if url not in category_urls
+        ]
+
+        self.__hrefs_path2 = os.path.join(self.__path, 'hrefs_on_data.json')
+        with open(self.__hrefs_path2, 'w') as file:
+            json.dump(final_urls, file, indent= 4, ensure_ascii= False)
+
 
     async def parsing(self,
                       file_name_for_main_site= 'main_site.html',
@@ -61,6 +101,10 @@ class ParserSite_23MET(Parser):
                       dir_name= None,
                       MAX_TASKS= 25):
         
+        self.__file_name_for_main_site = file_name_for_main_site
+        self.__accept = accept
+        self.__MAX_TASKS = MAX_TASKS
+
         path = os.getcwd()
 
         if dir_name:
@@ -70,45 +114,44 @@ class ParserSite_23MET(Parser):
                 print(f"Создал папку {dir_name} по пути {path}")
             else:
                 print(f"Не стал создавать папку {dir_name}, т.к она уже существует!")
-        
-        # --- ЦЕНТРАЛИЗОВАННОЕ СОЗДАНИЕ СЕССИИ ---
-        # Создаем коннектор и сессию ОДИН РАЗ для всех запросов этого парсера
-        connector = TCPConnector(ssl=False)
-        timeout = aiohttp.ClientTimeout(total= 20, connect=10)
-        async with aiohttp.ClientSession(connector=connector, timeout= timeout) as session:
-            try:
-                # --- Скачиваем главный сайт, используя созданную сессию ---
-                print("Скачиваю главную страницу...")
-                main_html = await self.get_html(session=session, url=self.base_url, accept=accept)
-                
-                if not main_html:
-                    raise Exception("Не удалось скачать главную страницу, завершаю работу.")
-                
-                main_file_path = os.path.join(path, file_name_for_main_site)
-                await self.put_file(path=main_file_path, data=main_html)
-                print(f"Сохранил главную страницу в {main_file_path}")
+        self.__path = path
+        self.__hrefs_path = os.path.join(self.__path, 'all_hrefs_on_data.json')
 
-            except Exception as ex:
-                print(ex)
-                return ex
+        async with aiohttp.ClientSession() as session:
 
-            # Получаем json с ссылками на сайты
-            hrefs_next_sites = await self.__get_hrefs_for_next_sites(main_file_path) 
+            await self._get_html_sitemap_of_main_site(session= session)
+            sitemap_urls = self._parsing_main_site()
 
-            semaphore = asyncio.Semaphore(MAX_TASKS)
-            
-            SUBMAIN_DIR_NAME = 'submain_sites'
-            dir_path = os.path.join(path, SUBMAIN_DIR_NAME) 
-            counter= 0
-            while os.path.isdir(dir_path):
-                dir_path += str(counter)
-                counter += 1
-            os.mkdir(dir_path)
-            
+            self.__num_all_tasks = len(sitemap_urls) # нужно просто для красивого отображения
+            self.__counter = 0 # нужно просто для красивого отображения
+
             tasks = []
-            for detail_name, submain_url in hrefs_next_sites.items():
-                task = asyncio.create_task(
-                    self._fetch_and_save_one(session, semaphore, submain_url, dir_path, detail_name, accept)
-                )
+            file_paths = []
+            for url in sitemap_urls:
+                file_path = os.path.join(self.__path, 
+                                         ParserSite_23MET.sanitize_filename(url.split('/')[-1]))
+                file_paths.append(file_path)
+
+                task = asyncio.create_task(self.download_AND_save(session= session,
+                                                                  url= url,
+                                                                  file_path= file_path,
+                                                                  accept= accept))
                 tasks.append(task)
             await asyncio.gather(*tasks)
+            
+            self.__counter = 0 
+            tasks = []
+            for file_path in file_paths:
+                tasks.append(asyncio.create_task(self._parsing_sitemap_files(file_path= file_path)))
+            hrefs = [item for result_list in await asyncio.gather(*tasks) for item in result_list] 
+            await self._save_data_in_json_file(self.__hrefs_path, hrefs)
+            self.__sanitize_hrefs_file()
+            print("Все должно сохраниться в", self.__hrefs_path)
+
+
+async def main():
+    a = ParserSite_23MET(max_rate=10, time_period= 1)
+    await a.parsing(dir_name= 'Test')
+
+if __name__ == "__main__":
+    asyncio.run(main())
