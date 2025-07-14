@@ -17,7 +17,7 @@ class GoogleParser():
         os.makedirs(DIR_NAME, exist_ok=True)
         self._dir_path = os.path.join(os.getcwd(), DIR_NAME) 
 
-        self.__COST_ONE_REQUEST = 1
+        self.__COST_ONE_REQUEST = 25 # стоимость кредитов на один запрос
     def _get_params(self, target_url):
         with open(self._api_key_path) as file:
             data = json.load(file)
@@ -25,7 +25,7 @@ class GoogleParser():
         # Проверяем не кончились ли бесплатные запросы
         user_id = None
         for i in range(len(data['API_KEYS'])):
-            if data['API_KEYS'][f'User_{i+1}']['USED_CREDIT'] < data['API_KEYS'][f'User_{i+1}']['MAX_CREDIT']:
+            if data['API_KEYS'][f'User_{i+1}']['MAX_CREDIT'] - data['API_KEYS'][f'User_{i+1}']['USED_CREDIT'] * self.__COST_ONE_REQUEST > 0:
                 user_id = f"User_{i+1}"
                 break
         if not user_id:
