@@ -25,7 +25,7 @@ class GoogleParser():
         # Проверяем не кончились ли бесплатные запросы
         user_id = None
         for i in range(len(data['API_KEYS'])):
-            if data['API_KEYS'][f'User_{i+1}']['MAX_CREDIT'] - data['API_KEYS'][f'User_{i+1}']['USED_CREDIT'] * self.__COST_ONE_REQUEST > 0:
+            if data['API_KEYS'][f'User_{i+1}']['MAX_CREDIT'] - data['API_KEYS'][f'User_{i+1}']['USED_CREDIT'] >= self.__COST_ONE_REQUEST:
                 user_id = f"User_{i+1}"
                 break
         if not user_id:

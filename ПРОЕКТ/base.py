@@ -118,8 +118,7 @@ class WorkerWithHtml(Readable):
                   "Sec-Fetch-Dest": "document",
                   "Sec-Fetch-Mode": "navigate",
                   "Sec-Fetch-Site": "none",
-                  "Sec-Fetch-User": "?1",
-                  "Referer": "https://23met.ru/"}
+                  "Sec-Fetch-User": "?1"}
         
 
         async def read_data_in_site():
@@ -225,16 +224,9 @@ class Parser(ABC):
                 return await self.__html_worker.get(session= session, url= url, semaphore= semaphore, accept= accept)
             except:
                 print("Не вернулся ответ от сервера, пробую еще раз!")
-                await asyncio.sleep(1)
-        answer = input("Вас заблокировали пройдите капчу, если не хотите продолжать напишите: NO")
-        if answer == "NO":
-            print("Не возвращается ответ от сервера, закрываю соединение!")
-            return None
-        else:
-            return self.__html_worker.get(session= session,
-                                          url= url,
-                                          semaphore= semaphore,
-                                          accept= accept)
+            await asyncio.sleep(2)
+        print(f"Не удалось получить данные с {url} после {retries} попыток. Пропускаю.")
+        return None
 
     async def _save_data_in_json_file(self, path: str, data: Any):
         await self.__file_worker._put_json_file(path, data)
