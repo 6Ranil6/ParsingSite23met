@@ -1,13 +1,17 @@
 import asyncio 
 import pandas as pd
 import os
-
+from pathlib import Path
 from parser_23MET import ParserSite_23MET
 from proxyParser import ParserProxyLib
 from preProcessor import PreProcessor
 
 
 async def main(with_proxy= False):
+    print("Скрипт запущен!")
+    script_dir = Path(__file__).parent.resolve()
+    os.chdir(script_dir)
+    
     if with_proxy:
         proxy = ParserProxyLib(max_rate= 100, time_period= 1)
         await proxy.parsing(url_for_checking= 'https://23met.ru/')

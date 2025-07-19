@@ -1,8 +1,0 @@
-{
-    "base_url": "https://proxylib.com/free-proxy-list",
-    "dir_name": "PROXY",
-    "CONECTION_PROTOCOL_TYPE": "HTTPS",
-    "MAX_PAGES": 77,
-    "MAX_TASKS": 25,
-    "delete_all_page_files": true
-}
