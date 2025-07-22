@@ -6,15 +6,39 @@ from bs4 import BeautifulSoup
 import re
 import json
 import aiolimiter
+from typing import Union
 
 class ParserProxyLib(Parser):
-    def __init__(self, base_url= "https://proxylib.com/free-proxy-list", max_rate = 1, time_period= 10):
+    def __init__(self, 
+                 base_url: str= "https://proxylib.com/free-proxy-list", 
+                 max_rate: int = 1, 
+                 time_period: int= 10):
+        """
+        Args:
+            base_url (str, optional): url по которому будет парситься proxies. Defaults to "https://proxylib.com/free-proxy-list".
+            max_rate (int, optional): Количество запросов за time_period. Defaults to 1.
+            time_period (int, optional): Время за которое выполняется max_rate запросов. Defaults to 10.
+        """
         super().__init__(base_url, proxy_list= None)
         self.__dir_path= None
         self.__limiter = aiolimiter.AsyncLimiter(max_rate= max_rate,
                                                  time_period= time_period)
 
-    async def _fetch_and_save_site(self, name_file, session, url, semaphore, accept= '*/*'):
+    async def _fetch_and_save_site(self, 
+                                   name_file: str, 
+                                   session: aiohttp.ClientSession, 
+                                   url: str, 
+                                   semaphore: asyncio.Semaphore, 
+                                   accept: str= '*/*') -> None:
+        """
+        Делает запрос по url-у и сохраняет полученный  html в name_file
+        Args:
+            name_file (str): имя файла
+            session (aiohttp.ClientSession): Сессия
+            url (str): url 
+            semaphore (asyncio.Semaphore, optional): нужен для ограничения количества запросов. Defaults to None.
+            accept (str, optional): типы файлов, которые клиент может принять (отображается браузером в header-e). Defaults to '*/*'.
+        """
         html = await self.get_html(session= session,
                                    url= url,
                                    semaphore= semaphore,
@@ -27,15 +51,25 @@ class ParserProxyLib(Parser):
         else:
             print(f"Не удалось скачать с {url}")
     
-    def __delete_all_page_files(self, MAX_PAGES):
+    def __delete_all_page_files(self, MAX_PAGES: int) -> None:
+        """
+        Удаляет все ненужные скаченные файлы из которых были забраны данные
+        Args:
+            MAX_PAGES (int): количество страниц
+        """
         for page_num in range(MAX_PAGES + 1):
             name_file = f"Page{page_num}.html"
             os.remove(os.path.join(self.__dir_path, name_file))
 
     async def _GET_socket_and_type(self, 
-                                   file_path):
+                                   file_path: str) -> list:
         """
-        Сразу парсит и сокеты и тип соединения
+        Сразу парсит и сокеты и тип соединения из file_path
+        Args:
+            file_path (str): абсолютный путь к файлу
+
+        Returns:
+            list: возвращает список кортежей, имеющие структуры (ТИП СОЕДИНЕНИЯ, СОКЕТ)
         """
         html = await self.get_file(path= file_path)
         soup = BeautifulSoup(html, 'lxml')
@@ -65,21 +99,34 @@ class ParserProxyLib(Parser):
         
         return zip(types, sockets)
     
-    def _create_dir(self, dir_name= "PROXY"):
-        # Создаем директорию в которой будем сохранять все данные
+    def _create_dir(self, dir_name: str= "PROXY"):
+        """
+        Создаем директорию в которой будем сохранять все данные
+        Args:
+            dir_name (str, optional): название директории. Defaults to "PROXY".
+        """
         self.__dir_path = os.path.join(os.getcwd(), dir_name)
         
         if not os.path.isdir(self.__dir_path):
             os.mkdir(self.__dir_path)    
 
     async def parsing(self,
-                      dir_name= "PROXY",
-                      CONECTION_PROTOCOL_TYPE= 'https',
-                      MAX_PAGES= 77,
-                      MAX_TASKS= 25,
-                      delete_all_page_files= True,
-                      url_for_checking= None):
-        
+                      dir_name: str= "PROXY",
+                      CONECTION_PROTOCOL_TYPE: str= 'https',
+                      MAX_PAGES: int= 77,
+                      MAX_TASKS: int= 25,
+                      delete_all_page_files: bool= True,
+                      url_for_checking: Union[None, str]= None) -> None:
+        """
+        Основрая функция для парсинга PROXY серверов по типу соединения.
+        Args:
+            dir_name (str, optional): Название директории, в котором сохраняются данные. Defaults to "PROXY".
+            CONECTION_PROTOCOL_TYPE (str, optional): Тип соединения. Defaults to 'https'.
+            MAX_PAGES (int, optional): Количество страниц необходимое для забора proxy серверов из сайта. Defaults to 77.
+            MAX_TASKS (int, optional): Максимальное количество параллельных запросов на сайт. Defaults to 25.
+            delete_all_page_files (bool, optional): Удалять ли ненужные файлы с данными?. Defaults to True.
+            url_for_checking (Union[None, str], optional): По какому URL-у проверить работоспосообность proxy-серверов. Defaults to None.
+        """
         self._create_dir(dir_name)
 
         semaphore = asyncio.Semaphore(MAX_TASKS)
@@ -153,7 +200,12 @@ class ParserProxyLib(Parser):
         await self._save_data_in_json_file(path= os.path.join(dir_name, 'update_setting.json'), data= update_json)
 
     
-    def get_sockets(self):
+    def get_sockets(self) -> list:
+        """
+        Возвращает сокеты, используется метод после метода parsing()
+        Returns:
+            list: список сокетов
+        """
         if not self.__dir_path or not os.path.exists(self.__dir_path):
             print("Ошибка: директория с прокси не найдена. Возможно, метод parsing() не был вызван.")
             return []
@@ -168,7 +220,18 @@ class ParserProxyLib(Parser):
         with open(file= os.path.join(self.__dir_path, 'proxy.json')) as f:
             return json.load(f)[protocol_type]
     
-    async def checking(self, proxy, url):
+    async def checking(self, 
+                       proxy: str, 
+                       url: str) -> bool:
+        """
+        Метод для проверки работоспособности переданново вами proxy для сайта по URL
+        Args:
+            proxy (_type_): один proxy
+            url (str): по которому нужно проверить работоспособность прокси
+
+        Returns:
+            bool: True - прокси работает, False - прокси не работает
+        """
         try:
             async with self.__limiter:
                 async with aiohttp.ClientSession() as session:
