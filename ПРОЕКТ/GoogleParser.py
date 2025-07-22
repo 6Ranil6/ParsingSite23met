@@ -18,6 +18,7 @@ class GoogleParser():
         self._dir_path = os.path.join(os.getcwd(), DIR_NAME) 
 
         self.__COST_ONE_REQUEST = 25 # стоимость кредитов на один запрос
+
     def _get_params(self, target_url):
         with open(self._api_key_path) as file:
             data = json.load(file)

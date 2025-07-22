@@ -43,7 +43,8 @@ class ParserSite_23MET(Parser):
         except TypeError:
             print(html, "тип None")
             return False
-        if re.search(r"прайс-лист — 23MET.ru\Z", soup.find('title').text):
+        title_tag = soup.find('title')
+        if title_tag is not None and re.search(r"прайс-лист — 23MET.ru\Z", soup.find('title').text):
             return True
         return False
 

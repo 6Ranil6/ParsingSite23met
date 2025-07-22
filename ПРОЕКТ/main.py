@@ -5,13 +5,15 @@ from pathlib import Path
 from parser_23MET import ParserSite_23MET
 from proxyParser import ParserProxyLib
 from preProcessor import PreProcessor
-
+from update_config import change_update_config_json
 
 async def main(with_proxy= False):
     print("Скрипт запущен!")
     script_dir = Path(__file__).parent.resolve()
     os.chdir(script_dir)
     
+    change_update_config_json(os.path.join(os.getcwd(), 'config.json'))
+
     if with_proxy:
         proxy = ParserProxyLib(max_rate= 100, time_period= 1)
         await proxy.parsing(url_for_checking= 'https://23met.ru/')

@@ -21,7 +21,11 @@ class Writable(ABC):
     def put(self, data: Any): pass
 
 class WorkerWithHtml(Readable):
-    
+    """
+    Класс, в котором реализуется работа с HTML-страницей.
+    Основной функционал забрать данные из сайта с помощью метода get().
+
+    """
     def __init__(self, proxy_list: list= None):
         super().__init__()
         self._user = UserAgent().random
@@ -41,6 +45,14 @@ class WorkerWithHtml(Readable):
                   url: str,
                   semaphore: asyncio.Semaphore= None,
                   accept: str= '*/*'):
+        """
+        Забрать данные 
+        Args:
+            session (aiohttp.ClientSession): _description_
+            url (str): _description_
+            semaphore (asyncio.Semaphore, optional): _description_. Defaults to None.
+            accept (str, optional): _description_. Defaults to '*/*'.
+        """
         
         async def read_data_in_site(proxy= None, header= None):
             nonlocal data
