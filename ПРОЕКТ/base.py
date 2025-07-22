@@ -3,7 +3,7 @@ import aiohttp
 import asyncio
 import os
 from fake_useragent import UserAgent
-from typing import Any
+from typing import Any, Union
 import aiofiles
 import json
 import random
@@ -44,17 +44,24 @@ class WorkerWithHtml(Readable):
                   session: aiohttp.ClientSession, 
                   url: str,
                   semaphore: asyncio.Semaphore= None,
-                  accept: str= '*/*'):
+                  accept: str= '*/*') -> Union[None, str]:
         """
-        Забрать данные 
+        Забрать данные из сайта с помощью тех прокси серверов, которые были переданы в объект при инициализации. 
+        (Параметр: proxy_list)
         Args:
-            session (aiohttp.ClientSession): _description_
-            url (str): _description_
-            semaphore (asyncio.Semaphore, optional): _description_. Defaults to None.
-            accept (str, optional): _description_. Defaults to '*/*'.
+            session (aiohttp.ClientSession): Сессия
+            url (str): url 
+            semaphore (asyncio.Semaphore, optional): нужен для ограничения количества запросов. Defaults to None.
+            accept (str, optional): типы файлов, которые клиент может принять (отображается браузером в header-e). Defaults to '*/*'.
+        
+        Returns:
+            Union[None, str]: None или HTML-разметка ввиде строки
         """
         
         async def read_data_in_site(proxy= None, header= None):
+            """
+            Основной Метод для забора данных из сайта с использование proxy
+            """
             nonlocal data
 
             kwargs= {'url': url,
@@ -118,7 +125,21 @@ class WorkerWithHtml(Readable):
                   session: aiohttp.ClientSession, 
                   url: str,
                   semaphore: asyncio.Semaphore= None,
-                  accept: str= '*/*'):
+                  accept: str= '*/*') -> Union[None, str]:
+        """
+        Метод для забора данных из сайта, но без использования proxy_list. Используется, когда proxy_list = None
+
+        Args:
+            session (aiohttp.ClientSession): Сессия
+            url (str): url 
+            semaphore (asyncio.Semaphore, optional): нужен для ограничения количества запросов. Defaults to None.
+            accept (str, optional): типы файлов, которые клиент может принять (отображается браузером в header-e). Defaults to '*/*'.
+        Raises:
+            Exception: сообщение о блокировки сайтом нашего IP.
+
+        Returns:
+            Union[None, str]: None или HTML-разметка ввиде строки
+        """
         
 
         header = {'Accept' : accept, 
@@ -134,6 +155,9 @@ class WorkerWithHtml(Readable):
         
 
         async def read_data_in_site():
+            """
+            Основной Метод для чтения данных из сайта
+            """
             data = None
             if semaphore:
                 async with semaphore:
@@ -163,7 +187,17 @@ class WorkerWithHtml(Readable):
                   session: aiohttp.ClientSession, 
                   url: str,
                   semaphore: asyncio.Semaphore= None,
-                  accept: str= '*/*'):
+                  accept: str= '*/*') -> Union[None, str]:
+        """
+        Метод выполняет основное предназначение всего класса. Служит для забора данных из сайта переданного по URL, учитывает и сессию(которая хранит в себе все данные об авториазации и куки)
+        Args:
+            session (aiohttp.ClientSession): Сессия
+            url (str): url 
+            semaphore (asyncio.Semaphore, optional): нужен для ограничения количества запросов. Defaults to None.
+            accept (str, optional): типы файлов, которые клиент может принять (отображается браузером в header-e). Defaults to '*/*'.
+        Returns:
+            Union[None, str]: None или HTML-разметка
+        """
         if self.__is_exists_proxy:
             return await self.__get_with_proxy(session= session,
                                                url= url,
@@ -176,60 +210,129 @@ class WorkerWithHtml(Readable):
                                                   accept= accept)
     
 class WorkerWithFiles(Readable, Writable):
-
+    """
+    Класс предназначен для работы с файлами.
+    Умеет забирать данные из файлов / Сохранять данные в файл / Сохранять данные в виде json-ов в файл.
+    """
     def __init__(self):
         super().__init__()
 
-    async def get(self, path: str):
+    async def get(self, path: str) -> str:
+        """
+        Забор данных из файла по пути path.
+        Args:
+            path (str): абсолютный путь к файлу
+        Returns:
+            str: данные из файла
+        """
         data = None
         async with aiofiles.open(file= path) as file:
             data = await file.read()
         return data
     
-    async def put(self, path: str, data: Any):
+    async def put(self, path: str, data: Any) -> None:
+        """
+        Метод кладет данные по абсолютному пути
+        Args:
+            path (str): абсолютный путь к файлу
+            data (Any): данные, которые нужно положить
+        """
         async with aiofiles.open(file= path, mode= 'w') as file:
             await file.write(data)
     
-    async def _put_json_file(self, path: str, data: Any):
+    async def _put_json_file(self, path: str, data: Union[dict, list]) -> None: # изменил ANY  на Union[dict, list]
+        """
+        Метод кладет json по абсолютному пути path.
+        Args:
+            path (str): абсолютный путь к файлу
+            data (Union[dict, list]): данные, которые нужно положить
+        """
         async with aiofiles.open(path, 'w') as file:
             json_str = json.dumps(obj= data, indent= 4, ensure_ascii= False) 
             await file.write(json_str)
     
     @staticmethod
-    def get_no_async(file_path: str): 
+    def get_no_async(file_path: str) -> str: 
+        """
+        Получение данных не асинхронным способом.
+        Args:
+            file_path (str): абсолютный путь к файлу
+        """
         with open(file_path) as file:    
             return file.read()
         
 class Parser(ABC):
+    """
+    Абстрактный класс для парсинга любого сайта. 
+    """
+    
     def __init__(self, base_url: str, proxy_list: list= None):
+        """
+        Args:
+            base_url (str): доменное имя сайта
+            proxy_list (list, optional): список прокси, если proxy_list = None, то прокси не будет использоваться, вместо этого при парсинге будет использоваться ваш IP:ПОРТ. Defaults to None.
+        """
         self.__file_worker = WorkerWithFiles()
         self.__html_worker = WorkerWithHtml(proxy_list)
         self.base_url = base_url
 
 
     @abstractmethod
-    def parsing(): pass
+    def parsing(self): pass
 
     @property
     def user_agent(self):
         return self.__html_worker.user
     
-    async def put_file(self, path: str, data: Any):
+    async def put_file(self, path: str, data: Any) -> None:
+        """
+        Кладет данные в файл
+        Args:
+            path (str): абсолютный путь
+            data (Any): данные
+        """
         await self.__file_worker.put(path= path, data= data)
     
 
-    async def get_file(self, path: str):
+    async def get_file(self, path: str) -> str:
+        """
+        Берет данные из файла
+        Args:
+            path (str): абсолютный путь к файлу
+
+        Returns:
+            str
+        """
         return await self.__file_worker.get(path= path)
 
     @staticmethod
-    def get_data_in_file_no_async(file_path: str): 
+    def get_data_in_file_no_async(file_path: str) -> str:
+        """
+        Получение данных из файла не асинхронным способом
+        Args:
+            file_path (str): абсолютный путь к файлу
+
+        Returns:
+            str
+        """
         return WorkerWithFiles.get_no_async(file_path= file_path)
     
     async def get_html(self, 
                        session: aiohttp.ClientSession,
                        url: str,
                        semaphore: asyncio.Semaphore= None,
-                       accept: str= '*/*'):
+                       accept: str= '*/*') -> Union[None, str]:
+        """
+        Получение данных из сайта по переданному вами URL-у.
+        Args:
+            session (aiohttp.ClientSession): Сессия
+            url (str): url 
+            semaphore (asyncio.Semaphore, optional): нужен для ограничения количества запросов. Defaults to None.
+            accept (str, optional): типы файлов, которые клиент может принять (отображается браузером в header-e). Defaults to '*/*'.
+
+        Returns:
+            Union[None, str]: None если данных нет или не удалось скачать данные из сайта. str - данные из сайта в виде строки
+        """
         retries= 5 # количество попыток при неудачном запросе
         for _ in range(retries):
             try:
@@ -240,6 +343,12 @@ class Parser(ABC):
         print(f"Не удалось получить данные с {url} после {retries} попыток. Пропускаю.")
         return None
 
-    async def _save_data_in_json_file(self, path: str, data: Any):
+    async def _save_data_in_json_file(self, path: str, data: Any) -> None:
+        """
+        Метод кладет json по абсолютному пути path.
+        Args:
+            path (str): абсолютный путь к файлу
+            data (Union[dict, list]): данные, которые нужно положить
+        """
         await self.__file_worker._put_json_file(path, data)
         
