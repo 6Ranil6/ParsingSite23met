@@ -1,0 +1,9 @@
+pandas
+numpy
+requests
+beautifulsoup4
+lxml
+aiohttp
+aiolimiter
+aiofiles
+fake_useragent
