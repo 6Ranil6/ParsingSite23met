@@ -23,8 +23,7 @@ async def main(with_proxy= False):
         main_parser = ParserSite_23MET(max_rate= 100, proxy_list= proxy_list)
     else:
         main_parser = ParserSite_23MET(max_rate= 100)
-    df =await main_parser.run(stop= 300,
-                              with_update_sites_info= True,
+    df =await main_parser.run(with_update_sites_info= True,
                               with_save_result= True,
                               with_remove_intermediate_data= True)
 

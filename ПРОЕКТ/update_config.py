@@ -1,7 +1,12 @@
 from datetime import datetime
 import json
 
-def change_update_config_json(file_path):
+def change_update_config_json(file_path: str) -> None:
+    """
+    Функция отвечающая за обновление данных в config.json. Используется для контроля кол-ва кредитов для ScraperApi
+    Args:
+        file_path (str): абсолютный путь к файлу
+    """
     UPDATE = 'UPDATE'
     LAST_CHECKING_DATE = 'LAST_CHECKING_DATE'
     NEXT_UPDATE = 'NEXT_UPDATE'

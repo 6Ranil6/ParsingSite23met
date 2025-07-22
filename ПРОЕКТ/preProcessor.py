@@ -24,10 +24,16 @@ class PreProcessor:
         return self.__df
     
     def __del_space(self):
+        """
+        Удаляет ненужные пробелы
+        """
         for col in self.__df.columns: 
             self.__df[col] = self.__df[col].str.strip()
     
     def __preprocessing_extra_size_col(self):
+        """
+        Обрабатывает колонку с доп. размером
+        """
         col_name = 'Доп. размер'
         df = self.__df
         
@@ -100,7 +106,9 @@ class PreProcessor:
             self.__df[col] = extracted_data[col]
 
     def __union_price_cols(self):
-        
+        """
+        Объединяет и обрабатывает колонки связанные с ценой.
+        """
         cols_with_price = [col for col in self.__df.columns if re.search(r"Цена, ", col)]
         price_df = self.__df[cols_with_price]
         
@@ -147,6 +155,9 @@ class PreProcessor:
         self.__df.drop(columns=cols_with_price + ['temp_price'], inplace=True, errors='ignore')
 
     def __preprocessing_size_col(self):
+        """
+        Обрабатывает колонку с размером
+        """
         size_data = self.__df['Размер'].apply(PreProcessor.parse_size)
         size_df = pd.DataFrame(size_data.tolist(), index=self.__df.index)
         for col in size_df.columns:
@@ -158,7 +169,6 @@ class PreProcessor:
         Парсит сложное строковое значение из столбца "Размер" 
         и возвращает словарь с извлеченными компонентами.
         """
-        # Инициализируем пустой результат
         result = {}
         
         if pd.isna(size_str) or not str(size_str).strip():
@@ -329,5 +339,10 @@ class PreProcessor:
         self.__df['Номер_стандарта'] = extracted_data['Номер_стандарта_raw'].str.replace(r'-\d{2,4}$', '', regex=True)
         self.__df['Год_стандарта'] = extracted_data['Год_стандарта'].astype(float).fillna(0).astype(int)
 
-    def save_data(self, path):
+    def save_data(self, path: str):
+        """
+        Сохранение данных в csv файл
+        Args:
+            path (str): абсолютный путь куда нужно сохранять данные
+        """
         self.__df.to_csv(path)

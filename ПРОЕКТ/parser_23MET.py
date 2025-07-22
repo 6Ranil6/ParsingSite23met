@@ -1,13 +1,16 @@
 from base import Parser
+from GoogleParser import GoogleParser
+
 import aiohttp
 import asyncio
 import aiolimiter
+from bs4 import BeautifulSoup
+
 import os
 import re
-from GoogleParser import GoogleParser
-from bs4 import BeautifulSoup
 import pandas as pd
 from typing import Union
+
 
 class ParserSite_23MET(Parser):
     def __init__(self, 
@@ -303,4 +306,4 @@ class ParserSite_23MET(Parser):
 
         if with_remove_intermediate_data:
             print("Удаляю все промежуточные данные")
-            self.__delete_intermediate_data()
+            self.__delete_intermediate_data()     
