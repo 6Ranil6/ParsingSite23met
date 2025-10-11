@@ -274,7 +274,7 @@ class ParserSite_23MET(Parser):
                   stop: int= 100,
                   with_update_sites_info: bool= False,
                   with_save_result: bool= True,
-                  with_remove_intermediate_data: bool= False) -> None:
+                  with_remove_intermediate_data: bool= False) -> pd.DataFrame:
         """
         Основной метод, после запуска которого выполнятся все необходимые методы в нужной последовательности, а именно:
         1) Сохранение всех данных из html страниц в файлы
@@ -291,7 +291,7 @@ class ParserSite_23MET(Parser):
             with_remove_intermediate_data (bool, optional): Удалить промежуточные файлы?. Defaults to False.
         
         Returns:
-            None
+            pd.DataFrame
         """
         
         print("Начинаю процесс скачивания данных с сайта")
@@ -302,8 +302,10 @@ class ParserSite_23MET(Parser):
                              stop= stop)
         
         print("Начинаю процесс забора данных со скаченных сайтов")
-        await self.parsing(with_save_result= with_save_result)
+        main_df = await self.parsing(with_save_result= with_save_result)
 
         if with_remove_intermediate_data:
             print("Удаляю все промежуточные данные")
             self.__delete_intermediate_data()     
+
+        return main_df

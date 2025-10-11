@@ -25,10 +25,14 @@ async def main(with_proxy=False):
     else:
         main_parser = ParserSite_23MET(max_rate=100)
     df = await main_parser.run(
-        with_update_sites_info=True,
+        with_update_sites_info=False,
         with_save_result=True,
         with_remove_intermediate_data=True,
     )
+
+    if not os.path.exists(path= os.path.join(os.getcwd(), "23MET_DATA", "result.csv")):
+        print("Создаю файл")
+        df.to_csv(os.path.join(os.getcwd(), "23MET_DATA", "result.csv"))
 
     print("Начинаю предобработку данных")
     preprocessor = PreProcessor(
