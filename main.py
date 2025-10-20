@@ -6,9 +6,10 @@ from parser_23MET import ParserSite_23MET
 from proxyParser import ParserProxyLib
 from preProcessor import PreProcessor
 from update_config import change_update_config_json
-
+import warnings
 
 async def main(with_proxy=False):
+    warnings.filterwarnings("ignore", category= pd.errors.DtypeWarning)
     print("Скрипт запущен!")
     script_dir = Path(__file__).parent.resolve()
     os.chdir(script_dir)
@@ -25,7 +26,7 @@ async def main(with_proxy=False):
     else:
         main_parser = ParserSite_23MET(max_rate=100)
     df = await main_parser.run(
-        with_update_sites_info=False,
+        with_update_sites_info=True,
         with_save_result=True,
         with_remove_intermediate_data=True,
     )
