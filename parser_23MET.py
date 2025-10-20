@@ -257,9 +257,9 @@ class ParserSite_23MET(Parser):
                     df_s[self.__file_paths[index]] = pd.DataFrame(data= result)
                 except ValueError:
                     print("Не все масивы одной длинны тут:", self.__file_paths[index])
-
+        files_not_parsing = [os.path.join(self._dir_path, "result.csv"), os.path.join(self._dir_path, "preprocessing_result.csv")]
         if sites_without_needing_data:
-            print("Эти сайты не подходят под шаблон парсинга:", sites_without_needing_data)
+            print("Эти сайты не подходят под шаблон парсинга:", [site for site in sites_without_needing_data if site not in files_not_parsing])
         
         main_df = pd.concat(list(df_s.values()), ignore_index=True)
         main_df = main_df.sort_values(by= 'Наименование', ignore_index=True)

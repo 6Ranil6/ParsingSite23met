@@ -10,6 +10,9 @@ import warnings
 
 async def main(with_proxy=False):
     warnings.filterwarnings("ignore", category= pd.errors.DtypeWarning)
+    RESULT_FILE_PATH = os.path.join(os.getcwd(), "23MET_DATA", "result.csv")
+    PREPROCESSING_RESULT_FILE_PATH = os.path.join(os.getcwd(), "23MET_DATA", "preprocessing_result.csv")
+
     print("Скрипт запущен!")
     script_dir = Path(__file__).parent.resolve()
     os.chdir(script_dir)
@@ -31,21 +34,21 @@ async def main(with_proxy=False):
         with_remove_intermediate_data=True,
     )
 
-    if not os.path.exists(path= os.path.join(os.getcwd(), "23MET_DATA", "result.csv")):
-        print("Создаю файл")
-        df.to_csv(os.path.join(os.getcwd(), "23MET_DATA", "result.csv"))
+    if not os.path.exists(path= RESULT_FILE_PATH):
+        print("Создаю файл:", RESULT_FILE_PATH)
+        df.to_csv(RESULT_FILE_PATH)
 
     print("Начинаю предобработку данных")
     preprocessor = PreProcessor(
-        csv_file_path=os.path.join(os.getcwd(), "23MET_DATA", "result.csv")
+        csv_file_path= RESULT_FILE_PATH
     )
 
     print(
-        "Закончился препроцессинг. начинаю сохраанять структурированные данные по пути:",
-        os.path.join(os.getcwd(), "23MET_DATA", "preprocessing_result.csv"),
+        "Закончился препроцессинг.\nНачинаю сохранять структурированные данные по пути:",
+        PREPROCESSING_RESULT_FILE_PATH,
     )
     preprocessor.save_data(
-        path=os.path.join(os.getcwd(), "23MET_DATA", "preprocessing_result.csv")
+        path=PREPROCESSING_RESULT_FILE_PATH
     )
 
     print("Работа закончилась")
