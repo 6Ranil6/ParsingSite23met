@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 import os
 import re
 import pandas as pd
+import numpy as np
 from typing import Union
 
 
@@ -263,7 +264,18 @@ class ParserSite_23MET(Parser):
         main_df = pd.concat(list(df_s.values()), ignore_index=True)
         main_df = main_df.sort_values(by= 'Наименование', ignore_index=True)
         if with_save_result:
-            main_df.to_csv(os.path.join(self._dir_path, 'result.csv'))
+            temp_file_path = os.path.join(self._dir_path, 'result.csv')
+            
+            if os.path.isfile(temp_file_path):
+                temp_df = pd.read_csv(temp_file_path, index_col= 0)
+                main_df = pd.concat([main_df, temp_df], axis= 0)
+                main_df.drop_duplicates(inplace= True)
+                main_df.reset_index(inplace= True)
+                main_df.drop(columns=['index'], inplace= True)
+                for column in main_df.columns:
+                    main_df[column] = main_df[column].replace([" ", ''], np.nan)
+            main_df.to_csv(temp_file_path)
+            
         return main_df
         
 

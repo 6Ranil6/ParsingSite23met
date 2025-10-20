@@ -5,7 +5,7 @@ import re
 class PreProcessor:
 
     def __init__(self, csv_file_path):
-        self.__df = pd.read_csv(csv_file_path, index_col= 0)
+        self.__df = pd.read_csv(csv_file_path, index_col= 0, dtype='unicode')
         self.__del_space()
         self.__df = self.__df.replace(r'^\s*$', np.nan, regex=True) # Заменяем пустые строки в данных на тип NaN
         self.__preprocessing_size_col()

@@ -2,7 +2,7 @@
     "API_KEYS": {
         "User_1": {
             "API_KEY": "5c8ad1bf8efdb7bc8572b0aa044f5930",
-            "USED_CREDIT": 100,
+            "USED_CREDIT": 150,
             "MAX_CREDIT": 1000
         },
         "User_2": {
@@ -37,7 +37,7 @@
         }
     },
     "UPDATE": {
-        "LAST_CHECKING_DATE": "2025-10-11",
-        "NEXT_UPDATE": 30
+        "LAST_CHECKING_DATE": "2025-10-20",
+        "NEXT_UPDATE": 21
     }
 }
