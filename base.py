@@ -8,7 +8,7 @@ import json
 import random
 
 
-class WorkerWithHtml():
+class WorkerWithHtml:
     """
     Класс, в котором реализуется работа с HTML-страницей.
     Основной функционал забрать данные из сайта с помощью метода get().
@@ -202,7 +202,7 @@ class WorkerWithHtml():
             )
 
 
-class WorkerWithFiles():
+class WorkerWithFiles:
     """
     Класс предназначен для работы с файлами.
     Умеет забирать данные из файлов / Сохранять данные в файл / Сохранять данные в виде json-ов в файл.

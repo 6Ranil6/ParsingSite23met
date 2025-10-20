@@ -5,8 +5,10 @@ import json
 from bs4 import BeautifulSoup
 import asyncio
 from base import WorkerWithFiles
+from base import Parser
 
-class GoogleParser():
+class GoogleParser(Parser):
+
     def __init__(self, 
                  query_for_browser: str):
         """
